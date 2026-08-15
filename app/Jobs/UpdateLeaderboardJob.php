@@ -21,9 +21,24 @@ class UpdateLeaderboardJob implements ShouldQueue
 
     private const ALREADY_PROCESSED = 'already_processed';
 
+    /**
+     * Количество попыток выполнения до перевода джоба в failed jobs.
+     */
+    public $tries = 3;
+
     public function __construct(
         public int $actionId,
     ) {}
+
+    /**
+     * Задержка между попытками: после 1-й — 5 сек, после 2-й — 30 сек, после 3-й — 120 сек.
+     *
+     * @return int[]
+     */
+    public function backoff(): array
+    {
+        return [5, 30, 120];
+    }
 
     public function handle(): void
     {
