@@ -2,6 +2,10 @@
 
 namespace App\Services;
 
+use App\Dto\LeaderboardEntry;
+use App\Dto\LeaderboardPage;
+use App\Dto\UserNeighbors;
+use App\Dto\UserRank;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -25,10 +29,7 @@ class LeaderboardService
         };
     }
 
-    /**
-     * @return array{data: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>, meta: array{page: int, per_page: int, period: string}}
-     */
-    public function paginate(string $period = 'all', int $page = 1, int $perPage = 10): array
+    public function paginate(string $period = 'all', int $page = 1, int $perPage = 10): LeaderboardPage
     {
         $key = self::keyForPeriod($period);
         $start = ($page - 1) * $perPage;
@@ -36,20 +37,15 @@ class LeaderboardService
 
         $entries = Redis::zrevrange($key, $start, $stop, true);
 
-        return [
-            'data' => $this->formatEntries($entries, $start),
-            'meta' => [
-                'page' => $page,
-                'per_page' => $perPage,
-                'period' => $period,
-            ],
-        ];
+        return new LeaderboardPage(
+            data: $this->formatEntries($entries, $start),
+            page: $page,
+            perPage: $perPage,
+            period: $period,
+        );
     }
 
-    /**
-     * @return array{user_id: int, score: ?int, rank: ?int}
-     */
-    public function rank(int $userId, string $period = 'all'): array
+    public function rank(int $userId, string $period = 'all'): UserRank
     {
         $key = self::keyForPeriod($period);
         $member = (string) $userId;
@@ -58,24 +54,13 @@ class LeaderboardService
         $score = Redis::zscore($key, $member);
 
         if ($rank === null || $rank === false) {
-            return [
-                'user_id' => $userId,
-                'score' => null,
-                'rank' => null,
-            ];
+            return new UserRank($userId, null, null);
         }
 
-        return [
-            'user_id' => $userId,
-            'score' => (int) $score,
-            'rank' => $rank + 1,
-        ];
+        return new UserRank($userId, (int) $score, $rank + 1);
     }
 
-    /**
-     * @return array{user_id: int, score: ?int, rank: ?int, above: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>, below: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>}
-     */
-    public function neighbors(int $userId, int $limit = 1, string $period = 'all'): array
+    public function neighbors(int $userId, int $limit = 1, string $period = 'all'): UserNeighbors
     {
         $key = self::keyForPeriod($period);
         $member = (string) $userId;
@@ -84,13 +69,7 @@ class LeaderboardService
         $score = Redis::zscore($key, $member);
 
         if ($rank === null || $rank === false) {
-            return [
-                'user_id' => $userId,
-                'score' => null,
-                'rank' => null,
-                'above' => [],
-                'below' => [],
-            ];
+            return new UserNeighbors($userId, null, null, [], []);
         }
 
         $above = [];
@@ -104,18 +83,18 @@ class LeaderboardService
         $belowStop = $rank + $limit;
         $below = Redis::zrevrange($key, $belowStart, $belowStop, true);
 
-        return [
-            'user_id' => $userId,
-            'score' => (int) $score,
-            'rank' => $rank + 1,
-            'above' => $this->formatEntries($above, max($rank - $limit, 0)),
-            'below' => $this->formatEntries($below, $belowStart),
-        ];
+        return new UserNeighbors(
+            userId: $userId,
+            score: (int) $score,
+            rank: $rank + 1,
+            above: $this->formatEntries($above, max($rank - $limit, 0)),
+            below: $this->formatEntries($below, $belowStart),
+        );
     }
 
     /**
      * @param  array<int|string, int|string>  $entries  member => score
-     * @return array<int, array{rank: int, user: array{id: int, name: string}, score: int}>
+     * @return list<LeaderboardEntry>
      */
     private function formatEntries(array $entries, int $startRank): array
     {
@@ -131,14 +110,12 @@ class LeaderboardService
                 continue;
             }
 
-            $data[] = [
-                'rank' => $rank,
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                ],
-                'score' => (int) $score,
-            ];
+            $data[] = new LeaderboardEntry(
+                rank: $rank,
+                userId: $user->id,
+                userName: $user->name,
+                score: (int) $score,
+            );
 
             $rank++;
         }

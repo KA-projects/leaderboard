@@ -29,7 +29,7 @@ class UserController extends Controller
             'period' => ['sometimes', Rule::in(LeaderboardService::PERIODS)],
         ]);
 
-        return response()->json($service->rank($user->id, $validated['period'] ?? 'all'));
+        return response()->json($service->rank($user->id, $validated['period'] ?? 'all')->toArray());
     }
 
     public function neighbors(User $user, Request $request, LeaderboardService $service): JsonResponse
@@ -40,6 +40,6 @@ class UserController extends Controller
 
         $limit = max(1, (int) $request->query('limit', 1));
 
-        return response()->json($service->neighbors($user->id, $limit, $validated['period'] ?? 'all'));
+        return response()->json($service->neighbors($user->id, $limit, $validated['period'] ?? 'all')->toArray());
     }
 }

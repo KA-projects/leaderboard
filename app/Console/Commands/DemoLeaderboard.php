@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Enums\UserActionType;
+use App\Dto\LeaderboardEntry;
 use App\Models\User;
 use App\Models\UserAction;
 use App\Services\LeaderboardService;
@@ -233,12 +234,12 @@ class DemoLeaderboard extends Command
         foreach (['all', 'daily', 'weekly', 'monthly'] as $period) {
             $this->newLine();
             $this->info('Лидерборд (период: '.$period.')');
-            $this->renderLeaderboardTable($leaderboard->paginate($period, 1, 10)['data']);
+            $this->renderLeaderboardTable($leaderboard->paginate($period, 1, 10)->data);
         }
     }
 
     /**
-     * @param  array<int, array{rank: int, user: array{id: int, name: string}, score: int}>  $entries
+     * @param  list<LeaderboardEntry>  $entries
      */
     private function renderLeaderboardTable(array $entries): void
     {
@@ -250,7 +251,7 @@ class DemoLeaderboard extends Command
 
         $this->table(
             ['Место', 'Пользователь', 'Баллы'],
-            array_map(fn (array $entry) => [$entry['rank'], $entry['user']['name'], $entry['score']], $entries),
+            array_map(fn (LeaderboardEntry $entry) => [$entry->rank, $entry->userName, $entry->score], $entries),
         );
     }
 
@@ -268,7 +269,7 @@ class DemoLeaderboard extends Command
             $scores = [];
 
             foreach (['daily', 'weekly', 'monthly', 'all'] as $period) {
-                $scores[] = (string) ($leaderboard->rank($user->id, $period)['score'] ?? 0);
+                $scores[] = (string) ($leaderboard->rank($user->id, $period)->score ?? 0);
             }
 
             $rows[] = array_merge([$user->name], $scores);
@@ -297,7 +298,7 @@ class DemoLeaderboard extends Command
     {
         $rank = $leaderboard->rank($user->id);
 
-        return [$user->name, (string) ($rank['rank'] ?? '-'), $rank['score'] ?? 0];
+        return [$user->name, (string) ($rank->rank ?? '-'), $rank->score ?? 0];
     }
 
     /**
@@ -313,16 +314,16 @@ class DemoLeaderboard extends Command
 
             $around = [];
 
-            foreach (array_merge($neighbors['above'], $neighbors['below']) as $entry) {
-                $around[] = '#'.$entry['rank'].' '.$entry['user']['name'].' ('.$entry['score'].')';
+            foreach (array_merge($neighbors->above, $neighbors->below) as $entry) {
+                $around[] = '#'.$entry->rank.' '.$entry->userName.' ('.$entry->score.')';
             }
 
             $this->line(sprintf(
                 '  %s (ID %d): место #%s, баллы %d — соседи: %s',
                 $user->name,
                 $user->id,
-                $neighbors['rank'] ?? '-',
-                $neighbors['score'] ?? 0,
+                $neighbors->rank ?? '-',
+                $neighbors->score ?? 0,
                 $around === [] ? 'нет' : implode(', ', $around),
             ));
         }

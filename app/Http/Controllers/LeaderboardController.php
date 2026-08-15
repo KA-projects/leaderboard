@@ -18,6 +18,6 @@ class LeaderboardController extends Controller
         $page = (int) $request->query('page', 1);
         $perPage = (int) $request->query('per_page', 10);
 
-        return response()->json($service->paginate($validated['period'] ?? 'all', $page, $perPage));
+        return response()->json($service->paginate($validated['period'] ?? 'all', $page, $perPage)->toArray());
     }
 }
