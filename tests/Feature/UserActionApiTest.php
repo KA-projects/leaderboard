@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Enums\UserActionType;
+use App\Jobs\UpdateLeaderboardJob;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
+use Mockery;
 use Tests\TestCase;
 
 class UserActionApiTest extends TestCase
@@ -12,10 +16,12 @@ class UserActionApiTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Действие «purchase» начисляет пользователю 100 баллов.
+     * Действие «purchase» начисляет пользователю 100 баллов и ставит джоб в очередь.
      */
     public function test_purchase_action_records_100_points(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $response = $this->postJson('/api/actions', [
@@ -35,13 +41,17 @@ class UserActionApiTest extends TestCase
             'type' => 'purchase',
             'points' => 100,
         ]);
+
+        Queue::assertPushed(UpdateLeaderboardJob::class, fn (UpdateLeaderboardJob $job) => $job->actionId === $response->json('id'));
     }
 
     /**
-     * Каждый поддерживаемый тип действия начисляет своё количество баллов.
+     * Каждый поддерживаемый тип действия начисляет своё количество баллов и ставит джоб в очередь.
      */
     public function test_each_supported_action_type_awards_its_points(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         foreach (UserActionType::cases() as $type) {
@@ -57,6 +67,8 @@ class UserActionApiTest extends TestCase
                     'points' => $type->points(),
                 ]);
         }
+
+        Queue::assertPushed(UpdateLeaderboardJob::class, count(UserActionType::cases()));
     }
 
     /**
@@ -64,6 +76,8 @@ class UserActionApiTest extends TestCase
      */
     public function test_response_contains_action_id(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $response = $this->postJson('/api/actions', [
@@ -80,6 +94,8 @@ class UserActionApiTest extends TestCase
      */
     public function test_action_for_missing_user_is_rejected(): void
     {
+        Queue::fake();
+
         $response = $this->postJson('/api/actions', [
             'user_id' => 9999,
             'type' => 'purchase',
@@ -96,6 +112,8 @@ class UserActionApiTest extends TestCase
      */
     public function test_invalid_action_type_is_rejected(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $response = $this->postJson('/api/actions', [
@@ -114,6 +132,8 @@ class UserActionApiTest extends TestCase
      */
     public function test_type_is_required(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $response = $this->postJson('/api/actions', [
@@ -131,12 +151,46 @@ class UserActionApiTest extends TestCase
      */
     public function test_points_from_request_are_ignored(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $response = $this->postJson('/api/actions', [
             'user_id' => $user->id,
             'type' => 'purchase',
             'points' => 1000000,
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'user_id' => $user->id,
+                'type' => 'purchase',
+                'points' => 100,
+            ]);
+
+        $this->assertDatabaseHas('user_actions', [
+            'user_id' => $user->id,
+            'type' => 'purchase',
+            'points' => 100,
+        ]);
+    }
+
+    /**
+     * Полный сценарий: запрос сохраняет действие, джоб выполняется и начисляет баллы в Redis.
+     */
+    public function test_action_flow_updates_redis_leaderboard(): void
+    {
+        $user = User::factory()->create();
+
+        $connection = Mockery::mock();
+        $connection->shouldReceive('zincrby')
+            ->once()
+            ->with('ranking:all', 100, (string) $user->id);
+        Redis::shouldReceive('connection')->andReturn($connection);
+
+        $response = $this->postJson('/api/actions', [
+            'user_id' => $user->id,
+            'type' => 'purchase',
         ]);
 
         $response->assertStatus(201)
