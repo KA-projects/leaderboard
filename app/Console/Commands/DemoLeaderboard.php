@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\UserActionType;
 use App\Dto\LeaderboardEntry;
+use App\Enums\UserActionType;
 use App\Models\User;
 use App\Models\UserAction;
 use App\Services\LeaderboardService;
@@ -87,7 +87,7 @@ class DemoLeaderboard extends Command
 
     /**
      * @param  list<User>  $users
-     * @return array<int, int>  userId => сумма баллов
+     * @return array<int, int> userId => сумма баллов
      */
     private function createActions(UserActionService $actions, array $users): array
     {

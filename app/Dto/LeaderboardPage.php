@@ -16,8 +16,7 @@ final readonly class LeaderboardPage
         public int $perPage,
         /** Период рейтинга: all, daily, weekly или monthly. */
         public string $period,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{data: list<array{rank: int, user: array{id: int, name: string}, score: int}>, meta: array{page: int, per_page: int, period: string}}

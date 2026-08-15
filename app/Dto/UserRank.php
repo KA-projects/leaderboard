@@ -11,8 +11,7 @@ final readonly class UserRank
         public ?int $score,
         /** Позиция в рейтинге (начиная с 1) или null, если пользователя нет в рейтинге. */
         public ?int $rank,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{user_id: int, score: ?int, rank: ?int}

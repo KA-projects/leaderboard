@@ -13,8 +13,7 @@ final readonly class LeaderboardEntry
         public string $userName,
         /** Количество набранных баллов. */
         public int $score,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{rank: int, user: array{id: int, name: string}, score: int}

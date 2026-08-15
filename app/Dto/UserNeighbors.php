@@ -19,8 +19,7 @@ final readonly class UserNeighbors
         public array $above,
         /** Записи пользователей, стоящих ниже, ближайшие к текущему. */
         public array $below,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{user_id: int, score: ?int, rank: ?int, above: list<array{rank: int, user: array{id: int, name: string}, score: int}>, below: list<array{rank: int, user: array{id: int, name: string}, score: int}>}

@@ -11,8 +11,7 @@ class UserActionController extends Controller
 {
     public function __construct(
         private readonly UserActionService $userActionService,
-    ) {
-    }
+    ) {}
 
     public function store(StoreUserActionRequest $request): JsonResponse
     {
