@@ -11,6 +11,8 @@ Route::get('/health', function () {
 
 Route::post('/users', [UserController::class, 'store']);
 Route::get('/users/{user}', [UserController::class, 'show']);
+Route::get('/users/{user}/rank', [UserController::class, 'rank']);
+Route::get('/users/{user}/neighbors', [UserController::class, 'neighbors']);
 
 Route::post('/actions', [UserActionController::class, 'store']);
 
