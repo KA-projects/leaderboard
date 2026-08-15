@@ -183,9 +183,10 @@ class UserActionApiTest extends TestCase
         $user = User::factory()->create();
 
         $connection = Mockery::mock();
-        $connection->shouldReceive('zincrby')
-            ->times(4)
-            ->with(Mockery::type('string'), 100, (string) $user->id);
+        $connection->shouldReceive('eval')
+            ->once()
+            ->with(Mockery::type('string'), 5, Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), '100', (string) $user->id)
+            ->andReturn('processed');
         Redis::shouldReceive('connection')->andReturn($connection);
 
         $response = $this->postJson('/api/actions', [

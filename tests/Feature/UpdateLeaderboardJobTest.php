@@ -17,7 +17,7 @@ class UpdateLeaderboardJobTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Джоб увеличивает счёт пользователя во всех рейтингах: all, daily, weekly, monthly.
+     * Джоб вызывает атомарный Lua-скрипт с маркером действия и ключами всех рейтингов.
      */
     public function test_job_increments_user_score_in_redis(): void
     {
@@ -29,25 +29,27 @@ class UpdateLeaderboardJobTest extends TestCase
         ]);
 
         $connection = Mockery::mock();
-        $connection->shouldReceive('zincrby')
+        $connection->shouldReceive('eval')
             ->once()
-            ->with('ranking:all', 100, (string) $user->id);
-        $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:daily:'.$action->created_at->format('Y-m-d'), 100, (string) $user->id);
-        $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:weekly:'.$action->created_at->format('o-\WW'), 100, (string) $user->id);
-        $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:monthly:'.$action->created_at->format('Y-m'), 100, (string) $user->id);
+            ->withArgs(function (string $script, int $numberOfKeys, ...$args) use ($action, $user) {
+                return $numberOfKeys === 5
+                    && str_contains($script, "redis.call('ZINCRBY', KEYS[i]")
+                    && $args[0] === UpdateLeaderboardJob::processedKey($action->id)
+                    && $args[1] === 'ranking:all'
+                    && $args[2] === 'ranking:daily:'.$action->created_at->format('Y-m-d')
+                    && $args[3] === 'ranking:weekly:'.$action->created_at->format('o-\WW')
+                    && $args[4] === 'ranking:monthly:'.$action->created_at->format('Y-m')
+                    && $args[5] === '100'
+                    && $args[6] === (string) $user->id;
+            })
+            ->andReturn('processed');
         Redis::shouldReceive('connection')->andReturn($connection);
 
         UpdateLeaderboardJob::dispatchSync($action->id);
     }
 
     /**
-     * Несколько действий одного пользователя суммируются во всех рейтингах.
+     * Каждое действие обрабатывается отдельным вызовом скрипта.
      */
     public function test_multiple_actions_accumulate_score(): void
     {
@@ -59,9 +61,10 @@ class UpdateLeaderboardJobTest extends TestCase
         ]);
 
         $connection = Mockery::mock();
-        $connection->shouldReceive('zincrby')
-            ->times(8)
-            ->with(Mockery::type('string'), 100, (string) $user->id);
+        $connection->shouldReceive('eval')
+            ->times(2)
+            ->with(Mockery::type('string'), 5, Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), '100', (string) $user->id)
+            ->andReturn('processed');
         Redis::shouldReceive('connection')->andReturn($connection);
 
         UpdateLeaderboardJob::dispatchSync($action->id);
@@ -83,18 +86,17 @@ class UpdateLeaderboardJobTest extends TestCase
         $action->save();
 
         $connection = Mockery::mock();
-        $connection->shouldReceive('zincrby')
+        $connection->shouldReceive('eval')
             ->once()
-            ->with('ranking:all', 100, (string) $user->id);
-        $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:daily:2026-08-14', 100, (string) $user->id);
-        $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:weekly:2026-W33', 100, (string) $user->id);
-        $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:monthly:2026-08', 100, (string) $user->id);
+            ->withArgs(function (string $script, int $numberOfKeys, ...$args) use ($action) {
+                return $numberOfKeys === 5
+                    && $args[0] === UpdateLeaderboardJob::processedKey($action->id)
+                    && $args[1] === 'ranking:all'
+                    && $args[2] === 'ranking:daily:2026-08-14'
+                    && $args[3] === 'ranking:weekly:2026-W33'
+                    && $args[4] === 'ranking:monthly:2026-08';
+            })
+            ->andReturn('processed');
         Redis::shouldReceive('connection')->andReturn($connection);
 
         UpdateLeaderboardJob::dispatchSync($action->id);
