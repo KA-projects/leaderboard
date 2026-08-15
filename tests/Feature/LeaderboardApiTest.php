@@ -162,4 +162,85 @@ class LeaderboardApiTest extends TestCase
                 ],
             ]);
     }
+
+    /**
+     * Период daily читает sorted set за текущий день.
+     */
+    public function test_daily_period_uses_daily_key(): void
+    {
+        $user = User::factory()->create();
+
+        Redis::shouldReceive('zrevrange')
+            ->once()
+            ->with(LeaderboardService::keyForPeriod('daily'), 0, 9, true)
+            ->andReturn([(string) $user->id => 100]);
+
+        $this->getJson('/api/leaderboard?period=daily')
+            ->assertOk()
+            ->assertJsonPath('meta.period', 'daily')
+            ->assertJsonPath('data.0.score', 100);
+    }
+
+    /**
+     * Период weekly читает sorted set за текущую неделю.
+     */
+    public function test_weekly_period_uses_weekly_key(): void
+    {
+        $user = User::factory()->create();
+
+        Redis::shouldReceive('zrevrange')
+            ->once()
+            ->with(LeaderboardService::keyForPeriod('weekly'), 0, 9, true)
+            ->andReturn([(string) $user->id => 200]);
+
+        $this->getJson('/api/leaderboard?period=weekly')
+            ->assertOk()
+            ->assertJsonPath('meta.period', 'weekly')
+            ->assertJsonPath('data.0.score', 200);
+    }
+
+    /**
+     * Период monthly читает sorted set за текущий месяц.
+     */
+    public function test_monthly_period_uses_monthly_key(): void
+    {
+        $user = User::factory()->create();
+
+        Redis::shouldReceive('zrevrange')
+            ->once()
+            ->with(LeaderboardService::keyForPeriod('monthly'), 0, 9, true)
+            ->andReturn([(string) $user->id => 300]);
+
+        $this->getJson('/api/leaderboard?period=monthly')
+            ->assertOk()
+            ->assertJsonPath('meta.period', 'monthly')
+            ->assertJsonPath('data.0.score', 300);
+    }
+
+    /**
+     * Период all явно читает общий sorted set.
+     */
+    public function test_all_period_uses_all_key(): void
+    {
+        $user = User::factory()->create();
+
+        Redis::shouldReceive('zrevrange')
+            ->once()
+            ->with(LeaderboardService::KEY, 0, 9, true)
+            ->andReturn([(string) $user->id => 400]);
+
+        $this->getJson('/api/leaderboard?period=all')
+            ->assertOk()
+            ->assertJsonPath('meta.period', 'all');
+    }
+
+    /**
+     * Некорректный период отклоняется валидацией.
+     */
+    public function test_invalid_period_is_rejected(): void
+    {
+        $this->getJson('/api/leaderboard?period=yearly')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('period');
+    }
 }

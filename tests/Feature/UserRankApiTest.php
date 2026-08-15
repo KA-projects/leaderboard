@@ -78,4 +78,25 @@ class UserRankApiTest extends TestCase
     {
         $this->getJson('/api/users/9999/rank')->assertStatus(404);
     }
+
+    /**
+     * Параметр period определяет, из какого рейтинга берётся позиция.
+     */
+    public function test_rank_respects_period(): void
+    {
+        $user = User::factory()->create();
+
+        Redis::shouldReceive('zrevrank')
+            ->once()
+            ->with(LeaderboardService::keyForPeriod('monthly'), (string) $user->id)
+            ->andReturn(1);
+        Redis::shouldReceive('zscore')
+            ->once()
+            ->with(LeaderboardService::keyForPeriod('monthly'), (string) $user->id)
+            ->andReturn(250);
+
+        $this->getJson("/api/users/{$user->id}/rank?period=monthly")
+            ->assertOk()
+            ->assertJson(['score' => 250, 'rank' => 2]);
+    }
 }

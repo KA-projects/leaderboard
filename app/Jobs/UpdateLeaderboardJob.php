@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\UserAction;
+use App\Services\LeaderboardService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Redis;
@@ -20,6 +21,17 @@ class UpdateLeaderboardJob implements ShouldQueue
     {
         $action = UserAction::findOrFail($this->actionId);
 
-        Redis::connection()->zincrby('ranking:all', $action->points, (string) $action->user_id);
+        $keys = [
+            LeaderboardService::KEY,
+            LeaderboardService::keyForPeriod('daily', $action->created_at),
+            LeaderboardService::keyForPeriod('weekly', $action->created_at),
+            LeaderboardService::keyForPeriod('monthly', $action->created_at),
+        ];
+
+        $connection = Redis::connection();
+
+        foreach ($keys as $key) {
+            $connection->zincrby($key, $action->points, (string) $action->user_id);
+        }
     }
 }

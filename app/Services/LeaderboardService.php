@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Redis;
 
@@ -10,21 +11,37 @@ class LeaderboardService
 {
     public const KEY = 'ranking:all';
 
-    /**
-     * @return array{data: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>, meta: array{page: int, per_page: int}}
-     */
-    public function paginate(int $page = 1, int $perPage = 10): array
+    public const PERIODS = ['all', 'daily', 'weekly', 'monthly'];
+
+    public static function keyForPeriod(string $period, ?Carbon $date = null): string
     {
+        $date ??= Carbon::now();
+
+        return match ($period) {
+            'daily' => 'ranking:daily:'.$date->format('Y-m-d'),
+            'weekly' => 'ranking:weekly:'.$date->format('o-\WW'),
+            'monthly' => 'ranking:monthly:'.$date->format('Y-m'),
+            default => self::KEY,
+        };
+    }
+
+    /**
+     * @return array{data: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>, meta: array{page: int, per_page: int, period: string}}
+     */
+    public function paginate(string $period = 'all', int $page = 1, int $perPage = 10): array
+    {
+        $key = self::keyForPeriod($period);
         $start = ($page - 1) * $perPage;
         $stop = $start + $perPage - 1;
 
-        $entries = Redis::zrevrange(self::KEY, $start, $stop, true);
+        $entries = Redis::zrevrange($key, $start, $stop, true);
 
         return [
             'data' => $this->formatEntries($entries, $start),
             'meta' => [
                 'page' => $page,
                 'per_page' => $perPage,
+                'period' => $period,
             ],
         ];
     }
@@ -32,12 +49,13 @@ class LeaderboardService
     /**
      * @return array{user_id: int, score: ?int, rank: ?int}
      */
-    public function rank(int $userId): array
+    public function rank(int $userId, string $period = 'all'): array
     {
+        $key = self::keyForPeriod($period);
         $member = (string) $userId;
 
-        $rank = Redis::zrevrank(self::KEY, $member);
-        $score = Redis::zscore(self::KEY, $member);
+        $rank = Redis::zrevrank($key, $member);
+        $score = Redis::zscore($key, $member);
 
         if ($rank === null || $rank === false) {
             return [
@@ -57,12 +75,13 @@ class LeaderboardService
     /**
      * @return array{user_id: int, score: ?int, rank: ?int, above: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>, below: array<int, array{rank: int, user: array{id: int, name: string}, score: int}>}
      */
-    public function neighbors(int $userId, int $limit = 1): array
+    public function neighbors(int $userId, int $limit = 1, string $period = 'all'): array
     {
+        $key = self::keyForPeriod($period);
         $member = (string) $userId;
 
-        $rank = Redis::zrevrank(self::KEY, $member);
-        $score = Redis::zscore(self::KEY, $member);
+        $rank = Redis::zrevrank($key, $member);
+        $score = Redis::zscore($key, $member);
 
         if ($rank === null || $rank === false) {
             return [
@@ -78,12 +97,12 @@ class LeaderboardService
         if ($rank > 0) {
             $aboveStart = max($rank - $limit, 0);
             $aboveStop = $rank - 1;
-            $above = Redis::zrevrange(self::KEY, $aboveStart, $aboveStop, true);
+            $above = Redis::zrevrange($key, $aboveStart, $aboveStop, true);
         }
 
         $belowStart = $rank + 1;
         $belowStop = $rank + $limit;
-        $below = Redis::zrevrange(self::KEY, $belowStart, $belowStop, true);
+        $below = Redis::zrevrange($key, $belowStart, $belowStop, true);
 
         return [
             'user_id' => $userId,

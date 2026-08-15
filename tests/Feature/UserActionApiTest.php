@@ -184,8 +184,8 @@ class UserActionApiTest extends TestCase
 
         $connection = Mockery::mock();
         $connection->shouldReceive('zincrby')
-            ->once()
-            ->with('ranking:all', 100, (string) $user->id);
+            ->times(4)
+            ->with(Mockery::type('string'), 100, (string) $user->id);
         Redis::shouldReceive('connection')->andReturn($connection);
 
         $response = $this->postJson('/api/actions', [
