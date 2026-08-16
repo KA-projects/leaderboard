@@ -48,7 +48,7 @@ class UpdateLeaderboardIdempotencyTest extends TestCase
 
         $this->assertSame(
             '1',
-            Redis::get(UpdateLeaderboardJob::processedKey($action->id)),
+            Redis::get(LeaderboardService::processedKey($action->id)),
         );
     }
 

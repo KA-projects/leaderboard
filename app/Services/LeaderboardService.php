@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\UserAction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
 class LeaderboardService
@@ -18,6 +19,60 @@ class LeaderboardService
     public const KEY = 'ranking:all';
 
     public const PERIODS = ['all', 'daily', 'weekly', 'monthly'];
+
+    /**
+     * Префикс ключей-маркеров, отмечающих уже обработанные действия.
+     */
+    public const PROCESSED_PREFIX = 'leaderboard:processed:';
+
+    private const ALREADY_PROCESSED = 'already_processed';
+
+    public static function processedKey(int $actionId): string
+    {
+        return self::PROCESSED_PREFIX.$actionId;
+    }
+
+    /**
+     * Атомарно начисляет баллы действия во все рейтинги Redis (all, daily, weekly, monthly)
+     * и отмечает действие как обработанное. Повторный вызов для того же действия
+     * ничего не начисляет и возвращает 'already_processed'.
+     *
+     * @return string результат скрипта: 'processed' или 'already_processed'
+     */
+    public function processAction(UserAction $action): string
+    {
+        $keys = [
+            self::processedKey($action->id),
+            self::KEY,
+            self::keyForPeriod('daily', $action->created_at),
+            self::keyForPeriod('weekly', $action->created_at),
+            self::keyForPeriod('monthly', $action->created_at),
+        ];
+
+        $result = Redis::connection()->eval(
+            $this->script(),
+            count($keys),
+            ...[
+                ...$keys,
+                (string) $action->points,
+                (string) $action->user_id,
+            ],
+        );
+
+        if ($result === self::ALREADY_PROCESSED) {
+            Log::info('Leaderboard action already processed', [
+                'action_id' => $action->id,
+            ]);
+        } else {
+            Log::info('Leaderboard action processed', [
+                'action_id' => $action->id,
+                'user_id' => $action->user_id,
+                'points' => $action->points,
+            ]);
+        }
+
+        return $result;
+    }
 
     /**
      * Возвращает ключ Redis для заданного периода.
@@ -183,5 +238,25 @@ class LeaderboardService
         return User::whereIn('id', array_map('intval', array_keys($entries)))
             ->get()
             ->keyBy('id');
+    }
+
+    private function script(): string
+    {
+        // Маркер хранится без TTL: безопасный срок жизни нельзя определить,
+        // т.к. retry задания может произойти через произвольное время,
+        // а истёкший маркер привёл бы к повторному начислению баллов.
+        return <<<'LUA'
+            if redis.call('EXISTS', KEYS[1]) == 1 then
+                return 'already_processed'
+            end
+
+            for i = 2, #KEYS do
+                redis.call('ZINCRBY', KEYS[i], ARGV[1], ARGV[2])
+            end
+
+            redis.call('SET', KEYS[1], '1')
+
+            return 'processed'
+        LUA;
     }
 }

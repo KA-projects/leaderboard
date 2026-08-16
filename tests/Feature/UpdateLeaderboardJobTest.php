@@ -6,6 +6,7 @@ use App\Enums\UserActionType;
 use App\Jobs\UpdateLeaderboardJob;
 use App\Models\User;
 use App\Models\UserAction;
+use App\Services\LeaderboardService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
@@ -34,7 +35,7 @@ class UpdateLeaderboardJobTest extends TestCase
             ->withArgs(function (string $script, int $numberOfKeys, ...$args) use ($action, $user) {
                 return $numberOfKeys === 5
                     && str_contains($script, "redis.call('ZINCRBY', KEYS[i]")
-                    && $args[0] === UpdateLeaderboardJob::processedKey($action->id)
+                    && $args[0] === LeaderboardService::processedKey($action->id)
                     && $args[1] === 'ranking:all'
                     && $args[2] === 'ranking:daily:'.$action->created_at->format('Y-m-d')
                     && $args[3] === 'ranking:weekly:'.$action->created_at->format('o-\WW')
@@ -90,7 +91,7 @@ class UpdateLeaderboardJobTest extends TestCase
             ->once()
             ->withArgs(function (string $script, int $numberOfKeys, ...$args) use ($action) {
                 return $numberOfKeys === 5
-                    && $args[0] === UpdateLeaderboardJob::processedKey($action->id)
+                    && $args[0] === LeaderboardService::processedKey($action->id)
                     && $args[1] === 'ranking:all'
                     && $args[2] === 'ranking:daily:2026-08-14'
                     && $args[3] === 'ranking:weekly:2026-W33'
