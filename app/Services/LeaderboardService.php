@@ -17,15 +17,26 @@ class LeaderboardService
 
     public const PERIODS = ['all', 'daily', 'weekly', 'monthly'];
 
-    public static function keyForPeriod(string $period, ?Carbon $date = null): string
+    /**
+     * Возвращает ключ Redis для заданного периода.
+     *
+     * @param  string  $period  период ('all', 'daily', 'weekly', 'monthly')
+     * @param  Carbon|null  $date  дата, для которой строится ключ периода (по умолчанию сейчас)
+     * @param  string|null  $namespace  префикс временного namespace вида 'rebuild:{uuid}';
+     *                                  позволяет строить ключи без затрагивания рабочих
+     * @return string ключ Redis
+     */
+    public static function keyForPeriod(string $period, ?Carbon $date = null, ?string $namespace = null): string
     {
         $date ??= Carbon::now();
 
+        $prefix = $namespace === null ? '' : $namespace.':';
+
         return match ($period) {
-            'daily' => 'ranking:daily:'.$date->format('Y-m-d'),
-            'weekly' => 'ranking:weekly:'.$date->format('o-\WW'),
-            'monthly' => 'ranking:monthly:'.$date->format('Y-m'),
-            default => self::KEY,
+            'daily' => 'ranking:'.$prefix.'daily:'.$date->format('Y-m-d'),
+            'weekly' => 'ranking:'.$prefix.'weekly:'.$date->format('o-\WW'),
+            'monthly' => 'ranking:'.$prefix.'monthly:'.$date->format('Y-m'),
+            default => 'ranking:'.$prefix.'all',
         };
     }
 

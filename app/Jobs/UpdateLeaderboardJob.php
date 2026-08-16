@@ -32,6 +32,7 @@ class UpdateLeaderboardJob implements ShouldQueue
 
     /**
      * Задержка между попытками: после 1-й — 5 сек, после 2-й — 30 сек, после 3-й — 120 сек.
+     * При репликации БД или временная недоступность Redis
      *
      * @return int[]
      */

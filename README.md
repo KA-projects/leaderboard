@@ -54,6 +54,21 @@ In order to ensure that the Laravel community is welcoming to all, please review
 
 If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
+## Восстановление leaderboard (`leaderboard:rebuild`)
+
+Redis — производное хранилище. Источник истины — PostgreSQL. Если Redis потерял данные, рейтинг можно полностью восстановить:
+
+```bash
+php artisan leaderboard:rebuild
+```
+
+Команда потоково читает `user_actions` через `chunkById()`, агрегирует `points` по каждому пользователю и восстанавливает ключи `ranking:all`, `ranking:daily:YYYY-MM-DD`, `ranking:weekly:YYYY-Www`, `ranking:monthly:YYYY-MM` (границы периодов считаются в timezone-конфигурации Laravel).
+
+### Безопасный rebuild
+
+Чтобы пользователь никогда не увидел «наполовину очищенный» leaderboard, команда сначала строит новый leaderboard во временном namespace `ranking:rebuild:{uuid}:*`, и только после успешного построения атомарно переключается на новые ключи (`ZADD` + `RENAME`). Если команда падает, старые ключи не затрагиваются — остаётся работать прежний leaderboard.
+
+
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
