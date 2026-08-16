@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Dto\LeaderboardEntry;
 use App\Dto\LeaderboardPage;
+use App\Dto\LeaderboardSums;
 use App\Dto\UserNeighbors;
 use App\Dto\UserRank;
 use App\Models\User;
+use App\Models\UserAction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Redis;
@@ -54,6 +56,45 @@ class LeaderboardService
             perPage: $perPage,
             period: $period,
         );
+    }
+
+    /**
+     * Считает сумму баллов по каждому пользователю из PostgreSQL (источник истины).
+     * Периоды daily/weekly/monthly ограничены границами, определёнными в timezone Laravel.
+     * Действия читаются потоково через chunkById, чтобы не загружать всё в память.
+     */
+    public function sumsFromPostgres(?Carbon $now = null): LeaderboardSums
+    {
+        $now ??= Carbon::now();
+
+        $periods = [
+            'daily' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
+            'weekly' => [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()],
+            'monthly' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
+        ];
+
+        $buckets = array_fill_keys(self::PERIODS, []);
+
+        UserAction::query()
+            ->select('id', 'user_id', 'points', 'created_at')
+            ->chunkById(1000, function (Collection $chunk) use (&$buckets, $periods): void {
+                foreach ($chunk as $action) {
+                    $userId = (int) $action->user_id;
+                    $points = (int) $action->points;
+
+                    $buckets['all'][$userId] = ($buckets['all'][$userId] ?? 0) + $points;
+
+                    foreach (['daily', 'weekly', 'monthly'] as $period) {
+                        [$start, $end] = $periods[$period];
+
+                        if ($action->created_at->betweenIncluded($start, $end)) {
+                            $buckets[$period][$userId] = ($buckets[$period][$userId] ?? 0) + $points;
+                        }
+                    }
+                }
+            });
+
+        return new LeaderboardSums(...$buckets);
     }
 
     public function rank(int $userId, string $period = 'all'): UserRank

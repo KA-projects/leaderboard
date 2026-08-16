@@ -69,6 +69,17 @@ php artisan leaderboard:rebuild
 Чтобы пользователь никогда не увидел «наполовину очищенный» leaderboard, команда сначала строит новый leaderboard во временном namespace `ranking:rebuild:{uuid}:*`, и только после успешного построения атомарно переключается на новые ключи (`ZADD` + `RENAME`). Если команда падает, старые ключи не затрагиваются — остаётся работать прежний leaderboard.
 
 
+## Проверка консистентности (`leaderboard:check`)
+
+Команда сравнивает PostgreSQL (источник истины) и Redis (производное представление) по всем периодам (`all`, `daily`, `weekly`, `monthly`), показывает статус каждого пользователя и число расхождений:
+
+```bash
+php artisan leaderboard:check
+echo $?   # 0 — расхождений нет, 1 — найдены расхождения
+```
+
+Источник истины определяется так же, как в `leaderboard:rebuild`: `SUM(user_actions.points) GROUP BY user_id`, границы daily/weekly/monthly — по timezone-конфигурации Laravel.
+
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
