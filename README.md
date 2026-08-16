@@ -1,85 +1,85 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Leaderboard API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Сервис подсчёта баллов пользователей и рейтинга на Laravel 12. Запускается целиком в Docker (PHP 8.2, PostgreSQL, Redis).
 
-## About Laravel
-
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
-
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-## Laravel Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## Восстановление leaderboard (`leaderboard:rebuild`)
-
-Redis — производное хранилище. Источник истины — PostgreSQL. Если Redis потерял данные, рейтинг можно полностью восстановить:
+## Запуск
 
 ```bash
-php artisan leaderboard:rebuild
+docker compose up -d
+docker compose exec app php artisan migrate --force
 ```
 
-Команда потоково читает `user_actions` через `chunkById()`, агрегирует `points` по каждому пользователю и восстанавливает ключи `ranking:all`, `ranking:daily:YYYY-MM-DD`, `ranking:weekly:YYYY-Www`, `ranking:monthly:YYYY-MM` (границы периодов считаются в timezone-конфигурации Laravel).
+Проверка: `curl -H "Accept: application/json" localhost:8000/api/health` → `{"status":"ok"}`.
 
-### Безопасный rebuild
+Любые PHP-команды — только внутри контейнера (`docker compose exec app php artisan ...`).
 
-Чтобы пользователь никогда не увидел «наполовину очищенный» leaderboard, команда сначала строит новый leaderboard во временном namespace `ranking:rebuild:{uuid}:*`, и только после успешного построения атомарно переключается на новые ключи (`ZADD` + `RENAME`). Если команда падает, старые ключи не затрагиваются — остаётся работать прежний leaderboard.
+## Возможности сервиса
 
+Баллы начисляются за действия: login — 1, like — 5, comment — 20, referral — 50, purchase — 100. Действие сохраняется в PostgreSQL, балл асинхронно добавляется в лидерборд Redis (через очередь). Ответы принимают `?pretty=1` для читаемого JSON.
 
-## Проверка консистентности (`leaderboard:check`)
+| Метод | Маршрут | Описание |
+|-------|---------|----------|
+| POST | `/api/users` | Создать пользователя |
+| GET | `/api/users/{id}` | Информация о пользователе |
+| GET | `/api/users/{id}/rank` | Место пользователя в рейтинге |
+| GET | `/api/users/{id}/neighbors` | Соседи в рейтинге (вокруг пользователя) |
+| POST | `/api/actions` | Отправить действие пользователя (`user_id`, `type`) |
+| GET | `/api/leaderboard` | Топ рейтинга (с пагинацией) |
 
-Команда сравнивает PostgreSQL (источник истины) и Redis (производное представление) по всем периодам (`all`, `daily`, `weekly`, `monthly`), показывает статус каждого пользователя и число расхождений:
+## Основные команды
 
 ```bash
-php artisan leaderboard:check
-echo $?   # 0 — расхождений нет, 1 — найдены расхождения
+docker compose up -d                       # запуск всех сервисов
+docker compose exec app php artisan migrate --force
+docker compose exec app php artisan test   # тесты
+docker compose exec app ./vendor/bin/pint  # стиль кода
+docker compose exec app php artisan demo   # демо-данные + показ функционала
+docker compose exec app php artisan leaderboard:rebuild  # восстановить рейтинг из PostgreSQL
+docker compose exec app php artisan leaderboard:check    # сверить рейтинг Redis с PostgreSQL
+docker compose up -d --scale queue=3       # масштабировать воркеры очереди
 ```
 
-Источник истины определяется так же, как в `leaderboard:rebuild`: `SUM(user_actions.points) GROUP BY user_id`, границы daily/weekly/monthly — по timezone-конфигурации Laravel.
+## API
 
-## License
+Базовый URL: `http://localhost:8000/api`. Добавьте `?pretty=1` для читаемого JSON. Все запросы передавайте с заголовком `Accept: application/json` — без него Laravel вернёт HTML вместо JSON. Общие параметры лидерборда: `period` (`all`|`daily`|`weekly`|`monthly`), `page`, `per_page` (макс. 100).
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### Создать пользователя
+
+```bash
+curl -X POST localhost:8000/api/users \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"name":"Иван","email":"ivan@example.com"}'
+```
+
+→ `201`, `{"id":1,"name":"Иван","email":"ivan@example.com",...}`
+
+### Отправить действие (начисление баллов)
+
+Типы: `login` (1), `like` (5), `comment` (20), `referral` (50), `purchase` (100).
+
+```bash
+curl -X POST localhost:8000/api/actions \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"user_id":1,"type":"like"}'
+```
+
+→ `201`. Балл попадает в рейтинг асинхронно через очередь.
+
+### Топ рейтинга
+
+```bash
+curl -H "Accept: application/json" \
+  "localhost:8000/api/leaderboard?period=weekly&page=1&per_page=10&pretty=1"
+```
+
+### Пользователь, его место и соседи
+
+```bash
+curl -H "Accept: application/json" localhost:8000/api/users/1
+curl -H "Accept: application/json" "localhost:8000/api/users/1/rank?period=all"
+curl -H "Accept: application/json" "localhost:8000/api/users/1/neighbors?limit=1&period=all"
+```
+
+`neighbors` возвращает `limit` соседей сверху и снизу вокруг пользователя. Рейтинг считается по сумме баллов за выбранный `period`.
