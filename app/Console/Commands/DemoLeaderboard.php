@@ -10,7 +10,6 @@ use App\Services\LeaderboardService;
 use App\Services\UserActionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Redis;
-use Illuminate\Support\Str;
 
 class DemoLeaderboard extends Command
 {
@@ -66,19 +65,18 @@ class DemoLeaderboard extends Command
     }
 
     /**
+     * Создаёт демо-пользователей: имена и email генерируются через faker.
+     *
      * @return list<User>
      */
     private function createUsers(): array
     {
-        $names = ['Иван', 'Мария', 'Пётр', 'Анна', 'Сергей', 'Ольга'];
-        $suffix = Str::lower(Str::random(6));
-
         $users = [];
 
-        foreach ($names as $i => $name) {
+        for ($i = 0; $i < 6; $i++) {
             $users[] = User::create([
-                'name' => $name,
-                'email' => 'user'.($i + 1).'.'.$suffix.'@example.com',
+                'name' => fake()->unique()->name(),
+                'email' => fake()->unique()->safeEmail(),
             ]);
         }
 
@@ -86,69 +84,30 @@ class DemoLeaderboard extends Command
     }
 
     /**
+     * Создаёт случайные действия: количество, типы и даты выбираются через faker
+     * для каждого пользователя отдельно, поэтому баллы сильно различаются.
+     *
      * @param  list<User>  $users
      * @return array<int, int> userId => сумма баллов
      */
     private function createActions(UserActionService $actions, array $users): array
     {
-        $plan = [
-            // сегодня — попадает во все периоды (daily, weekly, monthly, all)
-            [0, UserActionType::Login, 3, 0],
-            [0, UserActionType::Like, 2, 0],
-            [0, UserActionType::Comment, 1, 0],
-            [0, UserActionType::Purchase, 1, 0],
-            [1, UserActionType::Login, 2, 0],
-            [1, UserActionType::Like, 3, 0],
-            [1, UserActionType::Comment, 1, 0],
-            [2, UserActionType::Login, 5, 0],
-            [2, UserActionType::Like, 1, 0],
-            [3, UserActionType::Login, 2, 0],
-            [3, UserActionType::Like, 1, 0],
-            [4, UserActionType::Like, 1, 0],
-            [5, UserActionType::Login, 2, 0],
-
-            // вчера — нет в daily
-            [1, UserActionType::Referral, 3, 1],
-            [4, UserActionType::Comment, 1, 1],
-            [4, UserActionType::Like, 1, 1],
-            [2, UserActionType::Login, 3, 1],
-            [0, UserActionType::Like, 2, 1],
-            [3, UserActionType::Like, 1, 1],
-            [5, UserActionType::Login, 1, 1],
-
-            // неделю назад — нет в daily и weekly
-            [2, UserActionType::Purchase, 2, 8],
-            [3, UserActionType::Referral, 1, 8],
-            [3, UserActionType::Like, 1, 8],
-            [4, UserActionType::Comment, 1, 8],
-            [0, UserActionType::Login, 1, 8],
-            [1, UserActionType::Like, 1, 8],
-            [5, UserActionType::Login, 1, 8],
-
-            // месяц назад — только в all
-            [3, UserActionType::Purchase, 2, 35],
-            [3, UserActionType::Referral, 1, 35],
-            [3, UserActionType::Like, 1, 35],
-            [4, UserActionType::Referral, 1, 35],
-            [4, UserActionType::Login, 2, 35],
-            [0, UserActionType::Comment, 1, 35],
-            [0, UserActionType::Like, 1, 35],
-            [1, UserActionType::Login, 3, 35],
-            [2, UserActionType::Like, 2, 35],
-            [5, UserActionType::Login, 5, 35],
-        ];
-
         $expected = [];
 
-        foreach ($plan as [$index, $type, $count, $offsetDays]) {
-            $user = $users[$index];
-            $createdAt = $offsetDays === 0 ? null : now()->subDays($offsetDays);
+        foreach ($users as $user) {
+            // У каждого пользователя свой уровень активности
+            $actionCount = fake()->numberBetween(5, 15);
 
-            for ($i = 0; $i < $count; $i++) {
+            for ($i = 0; $i < $actionCount; $i++) {
+                $type = fake()->randomElement(UserActionType::cases());
+                // Часть действий — сегодня, остальные — в прошлые периоды
+                $offsetDays = fake()->randomElement([0, 0, 1, 8, 35]);
+                $createdAt = $offsetDays === 0 ? null : now()->subDays($offsetDays);
+
                 $actions->create($user->id, $type, $createdAt);
-            }
 
-            $expected[$user->id] = ($expected[$user->id] ?? 0) + $type->points() * $count;
+                $expected[$user->id] = ($expected[$user->id] ?? 0) + $type->points();
+            }
         }
 
         return $expected;
